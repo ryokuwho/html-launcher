@@ -4,7 +4,7 @@
     <!-- STREAMING_CHUNK:Configuring meta tags and PWA headers... -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>HTML Launcher v1.1.1</title>
+    <title>HTML Launcher v1.1.3</title>
     <!-- PWA Meta Tags -->
     <meta name="theme-color" content="#020617">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -37,6 +37,9 @@
             background-color: var(--slate-dark); 
             color: #f8fafc; 
             font-size: var(--text-md); 
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
         }
         .theme-card { 
             background-color: var(--slate-mid); 
@@ -63,7 +66,7 @@
                     <i class="fa-solid fa-rocket"></i> HTML Launcher
                 </h1>
                 <div class="flex items-center gap-2 mt-0.5">
-                    <span class="text-xs font-mono" style="color: var(--slate-light);">v1.1.1 (PWA)</span>
+                    <span class="text-xs font-mono" style="color: var(--slate-light);">v1.1.3</span>
                     <button id="pwa-install-btn" onclick="PWAInstaller.promptInstall()" class="hidden text-[10px] bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-2 py-0.5 rounded-full font-bold hover:bg-indigo-500/30 transition">
                         <i class="fa-solid fa-download mr-1"></i>アプリ化
                     </button>
@@ -100,30 +103,12 @@
         <div id="app-list" class="flex-1 overflow-y-auto space-y-3 pb-20"></div>
     </div>
 
-    <!-- STREAMING_CHUNK:Rendering viewer and code editor overlays... -->
-    <div id="viewer-view" class="fixed inset-0 z-50 flex flex-col hidden" style="background-color: var(--slate-dark);">
+    <!-- STREAMING_CHUNK:Rendering viewer overlay... -->
+    <div id="viewer-view" class="fixed inset-0 z-50 flex flex-col hidden bg-slate-950">
         <div class="absolute top-3 left-3 z-20 flex gap-2">
-            <button onclick="AppManager.closeViewer()" class="frosted-glass-btn" title="戻る"><i id="viewer-back-icon" class="fa-solid fa-arrow-left" style="font-size: 20px;"></i></button>
-        </div>
-        <div class="absolute top-3 right-3 z-20 flex gap-2">
-            <button onclick="AppManager.openEditor()" class="frosted-glass-btn text-white" title="コード編集" style="background: rgba(99, 102, 241, 0.6);"><i class="fa-solid fa-code" style="font-size: 18px;"></i></button>
+            <button onclick="AppManager.closeViewer()" class="frosted-glass-btn shadow-lg" title="戻る"><i id="viewer-back-icon" class="fa-solid fa-arrow-left" style="font-size: 20px;"></i></button>
         </div>
         <iframe id="viewer-frame" class="w-full h-full border-0 bg-white"></iframe>
-    </div>
-
-    <div id="editor-view" class="fixed inset-0 z-50 flex flex-col hidden bg-slate-950">
-        <header class="flex justify-between items-center px-4 py-3 border-b border-slate-800 bg-slate-900">
-            <div class="flex items-center gap-2">
-                <button onclick="AppManager.closeEditor()" class="p-2 text-slate-300 hover:text-white"><i class="fa-solid fa-xmark text-lg"></i></button>
-                <input type="text" id="editor-title-input" class="bg-slate-800 border border-slate-700 px-3 py-1.5 rounded-lg text-sm text-white focus:outline-none focus:border-indigo-500 w-48 sm:w-64" placeholder="アプリタイトル">
-            </div>
-            <div class="flex items-center gap-2">
-                <button onclick="AppManager.saveEditor()" class="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-1.5 rounded-lg text-sm font-bold shadow transition"><i class="fa-solid fa-floppy-disk mr-1.5"></i>保存</button>
-            </div>
-        </header>
-        <div class="flex-1 flex flex-col p-2">
-            <textarea id="editor-code-input" class="w-full flex-1 bg-slate-900 font-mono text-xs text-indigo-200 p-4 rounded-xl border border-slate-800 focus:outline-none resize-none leading-relaxed" spellcheck="false" placeholder="HTMLソースコード..."></textarea>
-        </div>
     </div>
 
     <!-- STREAMING_CHUNK:Rendering modal dialog system... -->
@@ -146,7 +131,6 @@
         const PWAInstaller = {
             deferredPrompt: null,
             init() {
-                // Dynamically inject Web App Manifest to support standalone installation
                 const manifestData = {
                     name: "HTML Launcher",
                     short_name: "Launcher",
@@ -171,7 +155,6 @@
                 const blob = new Blob([stringManifest], { type: 'application/json' });
                 document.getElementById('pwa-manifest').href = URL.createObjectURL(blob);
 
-                // Register Service Worker for offline caching if supported
                 if ('serviceWorker' in navigator) {
                     const swCode = `
                         self.addEventListener('install', (e) => { self.skipWaiting(); });
@@ -187,7 +170,6 @@
                     navigator.serviceWorker.register(swUrl).catch(err => console.log('SW registration error:', err));
                 }
 
-                // Listen for install prompt event
                 window.addEventListener('beforeinstallprompt', (e) => {
                     e.preventDefault();
                     this.deferredPrompt = e;
@@ -371,29 +353,6 @@
                 this.currentViewerId = null;
                 document.getElementById('viewer-view').classList.add('hidden'); 
                 document.getElementById('launcher-view').classList.remove('hidden'); 
-            },
-
-            openEditor() {
-                const app = this.list.find(a => a.id === this.currentViewerId);
-                if (!app) return;
-                document.getElementById('editor-title-input').value = app.title;
-                document.getElementById('editor-code-input').value = app.code;
-                document.getElementById('editor-view').classList.remove('hidden');
-            },
-
-            closeEditor() {
-                document.getElementById('editor-view').classList.add('hidden');
-            },
-
-            saveEditor() {
-                const app = this.list.find(a => a.id === this.currentViewerId);
-                if (!app) return;
-                app.title = document.getElementById('editor-title-input').value.trim() || '無題';
-                app.code = document.getElementById('editor-code-input').value;
-                this.save();
-                this.render();
-                document.getElementById('viewer-frame').srcdoc = app.code;
-                this.closeEditor();
             },
 
             adjustColor() {
