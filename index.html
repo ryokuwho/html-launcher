@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HTML Launcher v1.0.07</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --slate-dark: #020617; --slate-mid: #1e293b; --slate-light: #94a3b8;
+            --indigo-mid: #6366f1; --indigo-light: #818cf8; --red-mid: #dc2626;
+            --text-md: 0.875rem; --text-sm: 0.75rem;
+            --radius-lg: 16px; --radius-md: 12px; --radius-full: 50%;
+        }
+        body { background-color: var(--slate-dark); color: #f8fafc; font-size: var(--text-md); }
+        .theme-card { background-color: var(--slate-mid); border: 1px solid rgba(148, 163, 184, 0.15); }
+        .frosted-glass-btn {
+            width: 42px; height: 42px; border-radius: var(--radius-full);
+            background: rgba(255, 255, 255, 0.3); backdrop-filter: blur(1px);
+            border: 1px solid rgba(255, 255, 255, 0.5); display: flex; align-items: center; justify-content: center;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col font-sans select-none">
+
+    <div id="launcher-view" class="flex-1 flex flex-col max-w-md mx-auto w-full p-4">
+        <header class="flex justify-between items-center py-4 mb-2">
+            <div>
+                <h1 class="text-base font-bold flex items-center gap-2" style="color: var(--indigo-light);">
+                    <i class="fa-solid fa-rocket"></i> HTML Launcher
+                </h1>
+                <span class="text-xs font-mono" style="color: var(--slate-light);">v1.0.07</span>
+            </div>
+            <!-- 指定の並び順: ［ ↑ | ↓ | ＋ ］ -->
+            <div class="flex items-center gap-1.5">
+                <button onclick="AppManager.exportData()" title="バックアップ書き出し（エクスポート）" class="theme-card p-2.5 rounded-[var(--radius-md)] text-slate-300 transition active:scale-95 shadow-md">
+                    <i class="fa-solid fa-arrow-up"></i>
+                </button>
+                <label title="バックアップ読み込み（インポート）" class="theme-card p-2.5 rounded-[var(--radius-md)] text-slate-300 cursor-pointer transition active:scale-95 shadow-md">
+                    <i class="fa-solid fa-arrow-down"></i>
+                    <input type="file" id="import-input" accept=".json" class="hidden" onchange="AppManager.importData(event)">
+                </label>
+                <button onclick="document.getElementById('file-input').click()" class="text-white px-3.5 py-2.5 rounded-[var(--radius-md)] shadow-lg" style="background-color: var(--indigo-mid);" title="HTMLファイル追加">
+                    <i class="fa-solid fa-plus"></i>
+                </button>
+                <input type="file" id="file-input" accept=".html,.htm" class="hidden" multiple onchange="AppManager.addFiles(event)">
+            </div>
+        </header>
+
+        <!-- 検索 & ソート & 昇順降順切替 -->
+        <div class="flex gap-1.5 mb-4">
+            <input type="text" id="search-input" placeholder="検索..." oninput="AppManager.render()" class="w-28 theme-card border rounded-[var(--radius-md)] px-3 py-2.5 text-[var(--text-md)] focus:outline-none focus:border-indigo-500 transition">
+            <select id="sort-select" onchange="AppManager.render()" class="flex-1 theme-card border rounded-[var(--radius-md)] px-2 py-2.5 text-xs text-slate-200 focus:outline-none">
+                <option value="priority">優先度順</option>
+                <option value="name">名前順</option>
+                <option value="date">登録日順</option>
+            </select>
+            <button onclick="AppManager.toggleOrder()" id="order-btn" title="昇順/降順切替" class="theme-card border rounded-[var(--radius-md)] px-3 py-2.5 text-[var(--text-md)] text-indigo-400 font-bold active:scale-95 transition shrink-0">
+                <i class="fa-solid fa-arrow-up-wide-short" id="order-icon"></i>
+            </button>
+        </div>
+        <div id="app-list" class="flex-1 overflow-y-auto space-y-3 pb-20"></div>
+    </div>
+
+    <div id="viewer-view" class="fixed inset-0 z-50 flex flex-col hidden" style="background-color: var(--slate-dark);">
+        <div class="absolute top-3 left-3 z-20"><button onclick="AppManager.closeViewer()" class="frosted-glass-btn"><i id="viewer-back-icon" class="fa-solid fa-arrow-left" style="font-size: 24px;"></i></button></div>
+        <iframe id="viewer-frame" class="w-full h-full border-0 bg-white" onload="AppManager.adjustColor()"></iframe>
+    </div>
+
+    <script>
+        const STORAGE_KEY = 'html_launcher_v1_0_master';
+
+        const AppManager = {
+            list: [],
+            isAscending: true,
+            
+            init() {
+                // 過去の各バージョンキーからもデータを自動移行して統合
+                const possibleKeys = [STORAGE_KEY, 'launcher_v1_0_06', 'launcher_v1_0_05', 'launcher_v1_0_04', 'html_launcher_v1_0_04', 'my_apps_v38'];
+                let mergedList = [];
+                for (let key of possibleKeys) {
+                    const data = localStorage.getItem(key);
+                    if (data) {
+                        try {
+                            const parsed = JSON.parse(data);
+                            if (Array.isArray(parsed)) mergedList = [...mergedList, ...parsed];
+                        } catch(e) {}
+                    }
+                }
+
+                // IDで重複排除しつつ、タイムスタンプや日付を補正
+                const uniqueMap = new Map();
+                mergedList.forEach(item => {
+                    if (item && item.id && item.code) {
+                        if (!uniqueMap.has(item.id)) {
+                            uniqueMap.set(item.id, {
+                                id: String(item.id),
+                                title: item.title || '無題',
+                                priority: typeof item.priority === 'number' ? item.priority : 50,
+                                createdAt: item.createdAt || (item.date ? new Date(item.date).getTime() : Date.now()),
+                                date: item.date || new Date().toISOString().split('T')[0],
+                                code: item.code
+                            });
+                        }
+                    }
+                });
+
+                this.list = Array.from(uniqueMap.values());
+                this.save();
+                this.render();
+            },
+
+            save() { 
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(this.list)); 
+            },
+            
+            toggleOrder() {
+                this.isAscending = !this.isAscending;
+                const icon = document.getElementById('order-icon');
+                icon.className = this.isAscending ? "fa-solid fa-arrow-up-wide-short" : "fa-solid fa-arrow-down-wide-short";
+                this.render();
+            },
+
+            render() {
+                const container = document.getElementById('app-list');
+                container.innerHTML = '';
+                const mode = document.getElementById('sort-select').value;
+                const keyword = document.getElementById('search-input').value.toLowerCase();
+                
+                let filtered = this.list.filter(app => app.title.toLowerCase().includes(keyword));
+
+                filtered.sort((a, b) => {
+                    let res = 0;
+                    if (mode === 'priority') {
+                        res = (a.priority || 50) - (b.priority || 50);
+                    } else if (mode === 'name') {
+                        res = a.title.localeCompare(b.title, 'ja');
+                    } else if (mode === 'date') {
+                        // 内部のcreatedAt（ミリ秒）でより精密に昇降ソート
+                        res = (a.createdAt || 0) - (b.createdAt || 0);
+                    }
+                    return this.isAscending ? res : -res;
+                });
+
+                if (filtered.length === 0) {
+                    container.innerHTML = `<div class="text-center py-20" style="color: var(--slate-light);"><i class="fa-regular fa-folder-open text-4xl mb-3"></i><p class="text-sm">該当するHTMLがありません。</p></div>`;
+                    return;
+                }
+
+                filtered.forEach(app => {
+                    const card = document.createElement('div');
+                    card.className = "theme-card border p-3.5 rounded-[var(--radius-lg)] flex items-center justify-between";
+                    card.innerHTML = `
+                        <div class="flex items-center gap-3 min-w-0 flex-1 cursor-pointer" onclick="AppManager.openViewer('${app.id}')">
+                            <div class="w-10 h-10 rounded-[var(--radius-md)] bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center shrink-0" style="color: var(--indigo-light);"><i class="fa-solid fa-code"></i></div>
+                            <div class="min-w-0 flex-1">
+                                <h2 class="text-[var(--text-md)] truncate">${app.title}</h2>
+                                <span class="text-[10px] text-slate-400 font-mono">${app.date || ''}</span>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-1.5 shrink-0 ml-2">
+                            <span class="text-xs text-amber-400 font-bold" title="優先度">★</span>
+                            <input type="number" min="1" max="99" value="${app.priority || 50}" onchange="AppManager.updatePriority('${app.id}', this.value)" class="w-10 bg-transparent text-[var(--text-sm)] text-center border-b border-slate-700 focus:outline-none" onclick="event.stopPropagation()">
+                            <button type="button" onclick="AppManager.deleteApp('${app.id}')" class="p-2 text-slate-500 hover:text-red-400 cursor-pointer"><i class="fa-solid fa-trash-can"></i></button>
+                        </div>
+                    `;
+                    container.appendChild(card);
+                });
+            },
+
+            updatePriority(id, val) {
+                const app = this.list.find(a => a.id === id);
+                if (app) { app.priority = Math.max(1, Math.min(99, parseInt(val, 10) || 50)); this.save(); this.render(); }
+            },
+
+            openViewer(id) { 
+                const app = this.list.find(a => a.id === id); 
+                if (!app) return;
+                document.getElementById('viewer-frame').srcdoc = app.code; 
+                document.getElementById('launcher-view').classList.add('hidden'); 
+                document.getElementById('viewer-view').classList.remove('hidden'); 
+            },
+
+            closeViewer() { 
+                document.getElementById('viewer-view').classList.add('hidden'); 
+                document.getElementById('launcher-view').classList.remove('hidden'); 
+            },
+
+            adjustColor() {
+                const icon = document.getElementById('viewer-back-icon');
+                try {
+                    const rgb = window.getComputedStyle(document.getElementById('viewer-frame').contentDocument.body).backgroundColor.match(/\d+/g);
+                    const yiq = (parseInt(rgb[0]) * 299 + parseInt(rgb[1]) * 587 + parseInt(rgb[2]) * 114) / 1000;
+                    icon.style.color = yiq >= 180 ? '#1e293b' : '#ffffff';
+                } catch(e) { icon.style.color = '#ffffff'; }
+            },
+
+            deleteApp(id) { 
+                if(confirm('このツールを削除しますか？')) { 
+                    this.list = this.list.filter(a => a.id !== id); 
+                    this.save(); 
+                    this.render(); 
+                } 
+            },
+
+            async addFiles(e) { 
+                for(let file of e.target.files) {
+                    let cleanTitle = (file.name || "無題").replace(/\.html?$/i, "").trim().replace(/[ \u3000]+/g, '_');
+                    const now = Date.now();
+                    this.list.unshift({ 
+                        id: String(now) + Math.random().toString(36).substring(2, 7), 
+                        title: cleanTitle || "無題のツール", 
+                        createdAt: now,
+                        date: new Date(now).toISOString().split('T')[0], 
+                        priority: 50, 
+                        code: await file.text() 
+                    });
+                }
+                this.save(); 
+                this.render(); 
+                e.target.value = '';
+            },
+
+            exportData() {
+                const dataStr = JSON.stringify(this.list, null, 2);
+                const blob = new Blob([dataStr], { type: 'application/json' });
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = `html_launcher_backup_${new Date().toISOString().split('T')[0]}.json`;
+                a.click();
+            },
+
+            async importData(e) {
+                const file = e.target.files[0];
+                if (!file) return;
+                try {
+                    const text = await file.text();
+                    const rawData = JSON.parse(text);
+                    
+                    // 配列、またはオブジェクト形式（旧バックアップ）を安全にパース
+                    let importedArray = [];
+                    if (Array.isArray(rawData)) {
+                        importedArray = rawData;
+                    } else if (typeof rawData === 'object' && rawData !== null) {
+                        // もしキーに配列が含まれていれば抽出
+                        importedArray = Object.values(rawData).find(val => Array.isArray(val)) || [];
+                    }
+
+                    if (importedArray.length > 0) {
+                        if (confirm(`バックアップから ${importedArray.length} 件のデータを読み込みますか？（既存リストにマージされます）`)) {
+                            const uniqueMap = new Map();
+                            // 既存データを登録
+                            this.list.forEach(item => uniqueMap.set(item.id || item.title, item));
+                            
+                            // インポートデータを統合（古い形式のデータも補正）
+                            importedArray.forEach(item => {
+                                const key = item.id || item.title;
+                                const now = Date.now();
+                                uniqueMap.set(key, {
+                                    id: String(item.id || now + Math.random()),
+                                    title: item.title || '無題',
+                                    priority: typeof item.priority === 'number' ? item.priority : 50,
+                                    createdAt: item.createdAt || (item.date ? new Date(item.date).getTime() : now),
+                                    date: item.date || new Date(now).toISOString().split('T')[0],
+                                    code: item.code || ''
+                                });
+                            });
+
+                            this.list = Array.from(uniqueMap.values());
+                            this.save(); 
+                            this.render(); 
+                            alert('インポートが完了しました！');
+                        }
+                    } else {
+                        alert('有効なアプリデータが見つかりませんでした。');
+                    }
+                } catch (err) { 
+                    alert('ファイルの読み込みに失敗しました（JSON構文エラー等）。'); 
+                }
+                e.target.value = '';
+            }
+        };
+
+        AppManager.init();
+    </script>
+</body>
+</html>
