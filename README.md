@@ -1,4 +1,5 @@
-# html-launcherHTML Launcher
+# html-launcher
+
 
 スマホやPCのブラウザ上で動作する、自分だけのHTMLツール・ミニゲーム管理ランチャーです。お気に入りの単一HTMLファイルを手軽に登録・整理・起動できます。
 
