@@ -1,12 +1,25 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
+    <!-- STREAMING_CHUNK:Configuring meta tags and PWA headers... -->
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>HTML Launcher v1.1.0</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>HTML Launcher v1.1.1</title>
+    <!-- PWA Meta Tags -->
+    <meta name="theme-color" content="#020617">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="HTML Launcher">
+    <link rel="apple-touch-icon" href="https://placehold.co/192x192/6366f1/ffffff?text=HL">
+    
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Dynamic Web App Manifest generated via Blob URL -->
+    <link id="pwa-manifest" rel="manifest" href="">
+
     <style>
+        /* STREAMING_CHUNK:Styling custom styles and variables... */
         :root {
             --slate-dark: #020617; 
             --slate-mid: #1e293b; 
@@ -42,13 +55,19 @@
 </head>
 <body class="min-h-screen flex flex-col font-sans select-none">
 
+    <!-- STREAMING_CHUNK:Rendering launcher view layout... -->
     <div id="launcher-view" class="flex-1 flex flex-col max-w-md mx-auto w-full p-4">
         <header class="flex justify-between items-center py-4 mb-2">
             <div>
                 <h1 class="text-base font-bold flex items-center gap-2" style="color: var(--indigo-light);">
                     <i class="fa-solid fa-rocket"></i> HTML Launcher
                 </h1>
-                <span class="text-xs font-mono" style="color: var(--slate-light);">v1.1.0 (Enhanced)</span>
+                <div class="flex items-center gap-2 mt-0.5">
+                    <span class="text-xs font-mono" style="color: var(--slate-light);">v1.1.1 (PWA)</span>
+                    <button id="pwa-install-btn" onclick="PWAInstaller.promptInstall()" class="hidden text-[10px] bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-2 py-0.5 rounded-full font-bold hover:bg-indigo-500/30 transition">
+                        <i class="fa-solid fa-download mr-1"></i>アプリ化
+                    </button>
+                </div>
             </div>
             <!-- 指定の並び順: ［ ↑ | ↓ | ＋ ］ -->
             <div class="flex items-center gap-1.5">
@@ -66,6 +85,7 @@
             </div>
         </header>
 
+        <!-- STREAMING_CHUNK:Rendering search and filters... -->
         <div class="flex gap-1.5 mb-4">
             <input type="text" id="search-input" placeholder="検索..." oninput="AppManager.render()" class="w-28 theme-card border rounded-[var(--radius-md)] px-3 py-2.5 text-[var(--text-md)] focus:outline-none focus:border-indigo-500 transition">
             <select id="sort-select" onchange="AppManager.render()" class="flex-1 theme-card border rounded-[var(--radius-md)] px-2 py-2.5 text-xs text-slate-200 focus:outline-none">
@@ -80,6 +100,7 @@
         <div id="app-list" class="flex-1 overflow-y-auto space-y-3 pb-20"></div>
     </div>
 
+    <!-- STREAMING_CHUNK:Rendering viewer and code editor overlays... -->
     <div id="viewer-view" class="fixed inset-0 z-50 flex flex-col hidden" style="background-color: var(--slate-dark);">
         <div class="absolute top-3 left-3 z-20 flex gap-2">
             <button onclick="AppManager.closeViewer()" class="frosted-glass-btn" title="戻る"><i id="viewer-back-icon" class="fa-solid fa-arrow-left" style="font-size: 20px;"></i></button>
@@ -105,6 +126,7 @@
         </div>
     </div>
 
+    <!-- STREAMING_CHUNK:Rendering modal dialog system... -->
     <div id="modal-overlay" class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm hidden p-4">
         <div class="theme-card max-w-sm w-full rounded-2xl p-6 shadow-2xl border border-slate-700 animate-in fade-in zoom-in duration-200">
             <div id="modal-icon" class="w-12 h-12 rounded-full bg-indigo-500/20 text-indigo-400 flex items-center justify-center text-xl mb-4 mx-auto">
@@ -120,9 +142,78 @@
     </div>
 
     <script>
+        // STREAMING_CHUNK:Initializing PWA and Service Worker setup...
+        const PWAInstaller = {
+            deferredPrompt: null,
+            init() {
+                // Dynamically inject Web App Manifest to support standalone installation
+                const manifestData = {
+                    name: "HTML Launcher",
+                    short_name: "Launcher",
+                    start_url: window.location.href.split('?')[0],
+                    display: "standalone",
+                    background_color: "#020617",
+                    theme_color: "#020617",
+                    icons: [
+                        {
+                            src: "https://placehold.co/192x192/6366f1/ffffff?text=HL",
+                            sizes: "192x192",
+                            type: "image/png"
+                        },
+                        {
+                            src: "https://placehold.co/512x512/6366f1/ffffff?text=HTML",
+                            sizes: "512x512",
+                            type: "image/png"
+                        }
+                    ]
+                };
+                const stringManifest = JSON.stringify(manifestData);
+                const blob = new Blob([stringManifest], { type: 'application/json' });
+                document.getElementById('pwa-manifest').href = URL.createObjectURL(blob);
+
+                // Register Service Worker for offline caching if supported
+                if ('serviceWorker' in navigator) {
+                    const swCode = `
+                        self.addEventListener('install', (e) => { self.skipWaiting(); });
+                        self.addEventListener('activate', (e) => { e.waitUntil(clients.claim()); });
+                        self.addEventListener('fetch', (e) => {
+                            e.respondWith(
+                                fetch(e.request).catch(() => caches.match(e.request))
+                            );
+                        });
+                    `;
+                    const swBlob = new Blob([swCode], { type: 'text/javascript' });
+                    const swUrl = URL.createObjectURL(swBlob);
+                    navigator.serviceWorker.register(swUrl).catch(err => console.log('SW registration error:', err));
+                }
+
+                // Listen for install prompt event
+                window.addEventListener('beforeinstallprompt', (e) => {
+                    e.preventDefault();
+                    this.deferredPrompt = e;
+                    document.getElementById('pwa-install-btn').classList.remove('hidden');
+                });
+
+                window.addEventListener('appinstalled', () => {
+                    document.getElementById('pwa-install-btn').classList.add('hidden');
+                    this.deferredPrompt = null;
+                });
+            },
+
+            async promptInstall() {
+                if (!this.deferredPrompt) return;
+                this.deferredPrompt.prompt();
+                const { outcome } = await this.deferredPrompt.userChoice;
+                if (outcome === 'accepted') {
+                    document.getElementById('pwa-install-btn').classList.add('hidden');
+                }
+                this.deferredPrompt = null;
+            }
+        };
+
         const STORAGE_KEY = 'html_launcher_v1_0_master';
 
-        // Safe Modal System (replaces native alert and confirm)
+        // STREAMING_CHUNK:Defining ModalManager and AppManager application state...
         const ModalManager = {
             resolveFn: null,
             
@@ -166,6 +257,7 @@
             currentViewerId: null,
             
             init() {
+                PWAInstaller.init();
                 const possibleKeys = [STORAGE_KEY, 'launcher_v1_0_06', 'launcher_v1_0_05', 'launcher_v1_0_04', 'html_launcher_v1_0_04', 'my_apps_v38'];
                 let mergedList = [];
                 for (let key of possibleKeys) {
@@ -270,7 +362,6 @@
                 document.getElementById('launcher-view').classList.add('hidden'); 
                 document.getElementById('viewer-view').classList.remove('hidden'); 
                 
-                // onloadイベントをiframeに直接登録して、AppManagerのスコープエラーを防ぐ
                 frame.onload = () => {
                     AppManager.adjustColor();
                 };
