@@ -34,7 +34,5 @@
 
 🛠 技術スタック
 HTML5 / JavaScript (Vanilla JS)
-
 Tailwind CSS
-
 Font Awesome
